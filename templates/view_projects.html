@@ -1,0 +1,15 @@
+<!-- templates/profile.html -->
+
+{% extends "base.html" %}
+
+{% block content %}
+    {% for project in projects %}
+        {{ project.name }}
+        <br>
+        <hr>
+        {{ project.description }}
+        <br>
+        <hr>
+    {% endfor %}
+
+{% endblock %}
