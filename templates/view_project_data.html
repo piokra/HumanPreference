@@ -2,6 +2,71 @@
 
 {% extends "base.html" %}
 
+{% block javascript %}
+    <script src="https://ajax.googleapis.com/ajax/libs/jquery/3.2.1/jquery.min.js"></script>
+    <script>
+        let left = "{{ left | safe}}";
+        let right = "{{ right | safe}}";
+
+        function choice(which) {
+            $.post("{{ url_for('project.project_compare_post', project_name = project_name) }}", {
+                'which': which,
+                'left': left,
+                'right': right
+            });
+            console.log("Refreshing");
+            location.reload();
+        }
+
+        $(
+            function ($) {
+                let leftImage = new Image();
+                let rightImage = new Image();
+
+                leftImage.onload = function () {
+                    let leftCanvas = $("#left_canvas")[0];
+                    let rightCanvas = $("#right_canvas")[0];
+                    leftCanvas.getContext('2d').drawImage(leftImage, 0, 0, leftImage.width, leftImage.height, 0, 0, leftCanvas.width, rightCanvas.height);
+                    rightCanvas.getContext('2d').drawImage(rightImage, 0, 0, rightImage.width, rightImage.height, 0, 0, rightCanvas.width, rightCanvas.height);
+                };
+
+                leftImage.src = left;
+                rightImage.src = right;
+            }
+        );
+
+        $(document).keydown(function (e) {
+            switch (e.key) {
+                case "ArrowLeft": // left
+                    choice(0);
+                    break;
+
+                case "ArrowRight": // right
+                    choice(1);
+                    break;
+
+                default:
+                    return; // exit this handler for other keys
+            }
+            e.preventDefault(); // prevent the default action (scroll / move caret)
+        });
+    </script>
+{% endblock %}
+
 {% block content %}
-    {{ left }} or {{ right }}
+    <div class="columns is-gapless is-desktop is-vcentered">
+        <div id="left" onclick="choice(0)" class="column">
+            <canvas id="left_canvas" height="256px" width="256px"></canvas>
+        </div>
+        <div class="column is-one-fifth">
+            <h1 class="title">
+                or
+            </h1>
+        </div>
+        <div id="right" onclick="choice(1)" class="column">
+            <canvas id="right_canvas" height="256px" width="256px"></canvas>
+        </div>
+
+    </div>
+
 {% endblock %}

@@ -4,10 +4,16 @@
 
 {% block content %}
     {% for project in projects %}
-        {{ project.name }}
+        <hr>
+        <a href="{{ url_for('project.project_compare', project_name = project.name ) }}" class="navbar-item">
+            {{ project.name }}
+        </a>
+
         <br>
         <hr>
-        {{ project.description }}
+        <a href="{{ url_for('project.project_compare', project_name = project.name ) }}" class="navbar-item">
+            {{ project.description }}
+        </a>
         <br>
         <hr>
     {% endfor %}

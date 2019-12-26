@@ -1,11 +1,12 @@
-from typing import Any, List
+import threading
 
 import pika
+from pika.exceptions import AMQPError
 
 
 class DataQueue:
-    images: List[Any]
-    _connection: pika.BlockingConnection = None
+    _connection: pika.BlockingConnection = threading.local()
+    _data_queues = {}
 
     @classmethod
     def _set_up_connection(cls):
@@ -16,31 +17,56 @@ class DataQueue:
         return pika.BlockingConnection(parameters)
 
     def __init__(self, queue_name):
-        if DataQueue._connection is None or DataQueue._connection.is_closed:
-            DataQueue._connection = DataQueue._set_up_connection()
+        if not hasattr(DataQueue._connection,
+                       'value') or DataQueue._connection.value is None or DataQueue._connection.value.is_closed:
+            DataQueue._connection.value = DataQueue._set_up_connection()
+        else:
+            try:
+                DataQueue._connection.value.process_data_events()
+            except AMQPError:
+                DataQueue._connection.value = DataQueue._set_up_connection()
 
-        self.queue_name = queue_name
+        self._queue_name = queue_name
 
-        self.channel = DataQueue._connection.channel()
-        self.channel.basic_qos(prefetch_count=1)
+        self._channel = DataQueue._connection.value.channel()
+        # self.channel.basic_qos(prefetch_count=1)
 
-        self.channel.queue_declare(queue_name + "_up", durable=True)
-        self.channel.queue_declare(queue_name + "_down", durable=True)
+        self._channel.queue_declare(queue_name + "_up", durable=True)
+        self._channel.queue_declare(queue_name + "_down", durable=True)
 
-        self.channel.basic_consume(queue=queue_name + "_down", on_message_callback=self._image_callback, auto_ack=True)
-        self.images = []
+        self._channel.basic_consume(queue=queue_name + "_down", on_message_callback=self._image_callback)
 
     def await_data(self, timeout=None):
-        while len(self.images) == 0:
-            DataQueue._connection.process_data_events()
+        while self._queue_name not in DataQueue._data_queues or len(DataQueue._data_queues[self._queue_name]) == 0:
+            DataQueue._connection.value.process_data_events()
 
-        ret = self.images[0]
-        del self.images[0]
+        print(len(DataQueue._data_queues[self._queue_name]))
+        ret = DataQueue._data_queues[self._queue_name].pop(0)
         return ret
 
     def push_data(self, data, result):
-        self.channel.basic_publish(exchange='', routing_key=self.queue_name + "_up",
-                                   body="{}|{}".format(str(result), str(data)))
+        self._channel.basic_publish(exchange='', routing_key=self._queue_name + "_up",
+                                    body="{}|{}".format(str(result), str(data)))
 
     def _image_callback(self, ch, methods, props, body):
-        self.images.append(body)
+        print(self, methods, props, body)
+        if self._queue_name not in DataQueue._data_queues:
+            print("Creating new data queue {}".format(self._queue_name))
+            DataQueue._data_queues[self._queue_name] = []
+        DataQueue._data_queues[self._queue_name].append(body)
+        ch.basic_ack(delivery_tag=methods.delivery_tag)
+
+    @classmethod
+    def inspect(cls):
+        return repr(cls._data_queues)
+
+    def close(self):
+        if self._channel is not None:
+            self._channel.close()
+            self._channel = None
+
+    def __enter__(self):
+        return self
+
+    def __exit__(self, exc_type, exc_val, exc_tb):
+        self.close()

@@ -1,10 +1,8 @@
-from flask import Blueprint, render_template, redirect, url_for, request, flash, abort
+from flask import Blueprint, render_template, redirect, url_for, request, flash, abort, jsonify
 from flask_login import login_required, current_user
 
 from . import db
 from .models import Project
-
-import data_pika
 
 project = Blueprint('project', __name__)
 
@@ -62,10 +60,13 @@ def project_compare(project_name):
         return redirect(url_for('.project_view'))
 
     from .data_pika import DataQueue
-    channel = DataQueue(project_name)
-    channel.await_data()
+    left, right = None, None
 
-    return render_template('view_project_data.html', left="Boobs", right='Ass')
+    with DataQueue(project_name) as channel:
+        left, right = channel.await_data().decode('ascii').split('||')
+
+    print('Rendering')
+    return render_template('view_project_data.html', left=left, right=right, project_name=project_name)
 
 
 @project.route('/project/compare/<project_name>', methods=['POST'])
@@ -75,3 +76,20 @@ def project_compare_post(project_name):
         return abort(401)
 
     left, right, which = request.form["left"], request.form["right"], request.form["which"]
+
+    from .data_pika import DataQueue
+
+    with DataQueue(project_name) as dq:
+        dq.push_data("{},{}".format(left, right), which)
+
+    print('Pushed data')
+    return jsonify({'success': True})
+
+
+@project.route('/project/inspect')
+@login_required
+def project_inspect():
+    from data_pika import DataQueue
+    import threading
+    text = "DQ: {}\n Thread: {}".format(repr(DataQueue.inspect()), threading.current_thread().name)
+    return render_template('plain_text.html', text=text)
