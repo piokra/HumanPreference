@@ -40,7 +40,6 @@ class DataQueue:
         while self._queue_name not in DataQueue._data_queues or len(DataQueue._data_queues[self._queue_name]) == 0:
             DataQueue._connection.value.process_data_events()
 
-        print(len(DataQueue._data_queues[self._queue_name]))
         ret = DataQueue._data_queues[self._queue_name].pop(0)
         return ret
 
@@ -49,9 +48,8 @@ class DataQueue:
                                     body="{}|{}".format(str(result), str(data)))
 
     def _image_callback(self, ch, methods, props, body):
-        print(self, methods, props, body)
         if self._queue_name not in DataQueue._data_queues:
-            print("Creating new data queue {}".format(self._queue_name))
+            prin("Creating new data queue {}".format(self._queue_name))
             DataQueue._data_queues[self._queue_name] = []
         DataQueue._data_queues[self._queue_name].append(body)
         ch.basic_ack(delivery_tag=methods.delivery_tag)

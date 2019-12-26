@@ -65,7 +65,6 @@ def project_compare(project_name):
     with DataQueue(project_name) as channel:
         left, right = channel.await_data().decode('ascii').split('||')
 
-    print('Rendering')
     return render_template('view_project_data.html', left=left, right=right, project_name=project_name)
 
 
@@ -82,7 +81,6 @@ def project_compare_post(project_name):
     with DataQueue(project_name) as dq:
         dq.push_data("{},{}".format(left, right), which)
 
-    print('Pushed data')
     return jsonify({'success': True})
 
 
