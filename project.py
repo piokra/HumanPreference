@@ -59,35 +59,60 @@ def project_compare(project_name):
         flash("You are not authorized to access this project")
         return redirect(url_for('.project_view'))
 
+    return render_template('view_project_data.html', project_name=project_name)
+
+
+@project.route('/old/project/compare/<project_name>')
+@login_required
+def project_compare_old(project_name):
+    if not _is_authorized_to_use_project(project_name):
+        flash("You are not authorized to access this project")
+        return redirect(url_for('.project_view'))
+
     from .data_pika import DataQueue
     left, right = None, None
+    try:
+        channel = DataQueue(project_name)
+        left, right = channel.pop_data(limit=1)[0].decode('ascii').split('||')
+    except BaseException as e:  # todo more specific expection
+        print(e, type(e))
+        left, right = None, None
+    return render_template('view_project_data.old.html', left=left, right=right, project_name=project_name)
 
-    with DataQueue(project_name) as channel:
-        left, right = channel.await_data().decode('ascii').split('||')
 
-    return render_template('view_project_data.html', left=left, right=right, project_name=project_name)
-
-
-@project.route('/project/compare/<project_name>', methods=['POST'])
+@project.route('/project/api/compare/enqueue/<project_name>', methods=['POST'])
 @login_required
-def project_compare_post(project_name):
+def project_compare_enqueue(project_name):
     if not _is_authorized_to_use_project(project_name):
-        return abort(401)
+        return jsonify({'success': False, 'reason': 'Unauthorized'}), 401
 
-    left, right, which = request.form["left"], request.form["right"], request.form["which"]
+    json = request.get_json()
+    left, right, which = json["left"], json["right"], json["which"]
 
     from .data_pika import DataQueue
 
-    with DataQueue(project_name) as dq:
-        dq.push_data("{},{}".format(left, right), which)
+    dq = DataQueue(project_name)
+    dq.push_data("{}||{}".format(left, right), which)
 
     return jsonify({'success': True})
 
 
-@project.route('/project/inspect')
+@project.route('/project/api/compare/dequeue/<project_name>')
 @login_required
-def project_inspect():
-    from data_pika import DataQueue
-    import threading
-    text = "DQ: {}\n Thread: {}".format(repr(DataQueue.inspect()), threading.current_thread().name)
-    return render_template('plain_text.html', text=text)
+def project_compare_dequeue(project_name):
+    if not _is_authorized_to_use_project(project_name):
+        return jsonify({'success': False, 'reason': 'Unauthorized'}), 401
+
+    from .data_pika import DataQueue
+    lefts, rights = [], []
+    try:
+        channel = DataQueue(project_name)
+        data = channel.pop_data()
+        for datum in data:
+            left, right = datum.decode('ascii').split('||')
+            lefts.append(left)
+            rights.append(right)
+    except BaseException as e:  # todo more specific expection
+        print(e, type(e))
+
+    return jsonify({'success': True, 'lefts': lefts, 'rights': rights})

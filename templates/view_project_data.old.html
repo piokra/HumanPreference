@@ -1,0 +1,104 @@
+<!-- templates/profile.html -->
+
+{% extends "base.html" %}
+
+{% block javascript %}
+    <script src="https://ajax.googleapis.com/ajax/libs/jquery/3.2.1/jquery.min.js"></script>
+    <script>
+        let left = "{{ left | safe}}";
+        let right = "{{ right | safe}}";
+        let first = true;
+
+        function choice(which) {
+            if (!first) {
+                return
+            }
+            first = false;
+            $.ajax({
+                type: "POST",
+                url: "{{ url_for('project.project_compare_enqueue', project_name = project_name) }}",
+                data: JSON.stringify({'which': which, 'left': left, 'right': right}),
+                contentType: "application/json; charset=utf-8",
+                crossDomain: true,
+                success: () => location.reload(),
+                error: () => location.reload()
+                });
+        }
+
+        $(
+            {% if left is not none and right is not none %}
+                function ($) {
+                    let leftImage = new Image();
+                    let rightImage = new Image();
+
+
+                    leftImage.onload = function () {
+                        let leftCanvas = $("#left_canvas")[0];
+                        leftCanvas.getContext('2d').drawImage(leftImage, 0, 0, leftImage.width, leftImage.height, 0, 0, leftCanvas.width, leftCanvas.height);
+                    };
+
+                    rightImage.onload = function () {
+                        let rightCanvas = $("#right_canvas")[0];
+                        rightCanvas.getContext('2d').drawImage(rightImage, 0, 0, rightImage.width, rightImage.height, 0, 0, rightCanvas.width, rightCanvas.height);
+                    };
+
+                    leftImage.src = left;
+                    rightImage.src = right;
+                }
+            {% else %}
+                function ($) {
+                    setTimeout(() => location.reload(), 5000);
+                }
+            {% endif %}
+
+        )
+        ;
+
+
+        $(document).keydown(function (e) {
+            switch (e.key) {
+                case "ArrowLeft": // left
+                    choice(0);
+                    break;
+
+                case "ArrowRight": // right
+                    choice(1);
+                    break;
+
+                case " ":
+                    location.reload()
+                    break;
+
+                default:
+                    return; // exit this handler for other keys
+            }
+            e.preventDefault(); // prevent the default action (scroll / move caret)
+        });
+    </script>
+{% endblock %}
+
+{% block content %}
+    {% if left is not none and right is not none %}
+
+        <div class="columns is-gapless is-desktop is-vcentered">
+            <div id="left" onclick="choice(0)" class="column">
+                <canvas id="left_canvas" height="256px" width="256px"></canvas>
+            </div>
+            <div class="column is-one-fifth">
+                <h1 class="title">
+                    or
+                </h1>
+                <br>
+                <button class="button" onclick="location.reload()">Skip</button>
+            </div>
+            <div id="right" onclick="choice(1)" class="column">
+                <canvas id="right_canvas" height="256px" width="256px"></canvas>
+            </div>
+
+        </div>
+    {% else %}
+        <h1 class="title">
+            Didn't receive any data retrying in 5 seconds.
+        </h1>
+    {% endif %}
+{% endblock %}

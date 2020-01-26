@@ -5,35 +5,105 @@
 {% block javascript %}
     <script src="https://ajax.googleapis.com/ajax/libs/jquery/3.2.1/jquery.min.js"></script>
     <script>
-        let left = "{{ left | safe}}";
-        let right = "{{ right | safe}}";
+        let lefts = [];
+        let rights = [];
+        let left = null;
+        let right = null;
+        let isGettingImages = false;
+        let failedAttempts = 0;
+        let imagesDisplayed = false;
 
-        function choice(which) {
-            $.post("{{ url_for('project.project_compare_post', project_name = project_name) }}", {
-                'which': which,
-                'left': left,
-                'right': right
+        function getMoreImages() {
+            if (isGettingImages)
+                return;
+
+            isGettingImages = true;
+            $.ajax({
+                type: "GET",
+                url: "{{ url_for('project.project_compare_dequeue', project_name = project_name) }}",
+                crossDomain: true,
+                success: (body) => {
+                    isGettingImages = false;
+                    failedAttempts = 0;
+                    console.log(body)
+                    if (Array.isArray(body.lefts) && Array.isArray(body.rights)) {
+                        lefts = lefts.concat(body.lefts);
+                        rights = rights.concat(body.rights);
+                    }
+                    console.log([lefts, rights]);
+                    if (lefts.length && rights.length) {
+                        if (!imagesDisplayed)
+                            display(lefts.pop(), rights.pop());
+                    } else {
+                        setTimeout(getMoreImages, 1000);
+                    }
+
+                },
+                error: (body) => {
+                    isGettingImages = false;
+                    failedAttempts += 1;
+                    let x = failedAttempts + 1;
+                    setTimeout(getMoreImages, 1000 * (5 - 4 / x));
+                }
             });
-            console.log("Refreshing");
-            location.reload();
         }
 
-        $(
-            function ($) {
-                let leftImage = new Image();
-                let rightImage = new Image();
-
-                leftImage.onload = function () {
-                    let leftCanvas = $("#left_canvas")[0];
-                    let rightCanvas = $("#right_canvas")[0];
-                    leftCanvas.getContext('2d').drawImage(leftImage, 0, 0, leftImage.width, leftImage.height, 0, 0, leftCanvas.width, rightCanvas.height);
-                    rightCanvas.getContext('2d').drawImage(rightImage, 0, 0, rightImage.width, rightImage.height, 0, 0, rightCanvas.width, rightCanvas.height);
-                };
-
-                leftImage.src = left;
-                rightImage.src = right;
+        function choice(which) {
+            if (Math.min(lefts.length, rights.length) <= 3) {
+                getMoreImages();
             }
-        );
+
+            if (which != null) {
+                $.ajax({
+                    type: "POST",
+                    url: "{{ url_for('project.project_compare_enqueue', project_name = project_name) }}",
+                    data: JSON.stringify({'which': which, 'left': left, 'right': right}),
+                    contentType: "application/json; charset=utf-8",
+                    crossDomain: true
+                });
+            }
+
+
+            if (lefts.length && rights.length) {
+                let nextLeft = lefts.pop();
+                let nextRight = rights.pop();
+
+                display(left, right);
+            } else {
+                $("#images-div").addClass('is-hidden');
+                $("#progress-bar-div").removeClass('is-hidden');
+                imagesDisplayed = false;
+            }
+
+
+        }
+
+        function display(leftImageBase64, rightImageBase64) {
+            left = leftImageBase64;
+            right = rightImageBase64;
+
+            imagesDisplayed = true;
+            let leftImage = new Image();
+            let rightImage = new Image();
+
+
+            leftImage.onload = function () {
+                let leftCanvas = $("#left_canvas")[0];
+                leftCanvas.getContext('2d').drawImage(leftImage, 0, 0, leftImage.width, leftImage.height, 0, 0, leftCanvas.width, leftCanvas.height);
+            };
+
+            rightImage.onload = function () {
+                let rightCanvas = $("#right_canvas")[0];
+                rightCanvas.getContext('2d').drawImage(rightImage, 0, 0, rightImage.width, rightImage.height, 0, 0, rightCanvas.width, rightCanvas.height);
+            };
+
+            leftImage.src = left;
+            rightImage.src = right;
+
+            $("#images-div").removeClass('is-hidden');
+            $("#progress-bar-div").addClass('is-hidden');
+        }
+
 
         $(document).keydown(function (e) {
             switch (e.key) {
@@ -45,16 +115,24 @@
                     choice(1);
                     break;
 
+                case " ":
+                    choice(null);
+                    break;
+
                 default:
                     return; // exit this handler for other keys
             }
             e.preventDefault(); // prevent the default action (scroll / move caret)
         });
+
+        $(
+            getMoreImages
+        );
     </script>
 {% endblock %}
 
 {% block content %}
-    <div class="columns is-gapless is-desktop is-vcentered">
+    <div class="columns is-gapless is-desktop is-vcentered is-hidden" id="images-div">
         <div id="left" onclick="choice(0)" class="column">
             <canvas id="left_canvas" height="256px" width="256px"></canvas>
         </div>
@@ -62,11 +140,19 @@
             <h1 class="title">
                 or
             </h1>
+            <br>
+            <button class="button" onclick="choice(null)">Skip</button>
         </div>
         <div id="right" onclick="choice(1)" class="column">
             <canvas id="right_canvas" height="256px" width="256px"></canvas>
         </div>
 
     </div>
+    <div class="columns is-centered" id="progress-bar-div">
+        <div class="column is-two-thirds">
+            <progress class="progress is-large is-info is-two-thirds" max="100">60%</progress>
+        </div>
+    </div>
+
 
 {% endblock %}
